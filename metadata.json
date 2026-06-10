@@ -1,0 +1,6 @@
+{
+  "name": "カエルの横スクロールアクション",
+  "description": "カエルが主人公でヘビが敵の、初代スーパーマリオ風横スクロールアクションゲーム。ジャンプ、踏みつけ、舌を伸ばすアクションでヘビを倒しながらゴールを目指すゲームです。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

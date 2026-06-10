@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Space Grotesk", "DotGothic16", sans-serif;
+  --font-mono: "Press Start 2P", "Courier New", monospace;
+}
+
+/* Custom retro gaming custom styles */
+.font-pixel {
+  font-family: 'Press Start 2P', 'DotGothic16', monospace;
+}
+
+.font-retro {
+  font-family: 'DotGothic16', 'Press Start 2P', sans-serif;
+}
+
+/* CRT monitor scanlines retro aesthetic */
+.crt-overlay::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.04));
+  aspect-ratio: auto;
+  background-size: 100% 3px, 3px 100%;
+  pointer-events: none;
+  z-index: 99;
+}
+
+/* Glitch effect on title hover */
+@keyframes text-glitch {
+  0% { text-shadow: 2px 0 0 #ff00c1, -2px 0 0 #00fff9; }
+  25% { text-shadow: -2px 0 0 #ff00c1, 2px 0 0 #00fff9; }
+  50% { text-shadow: 2px -2px 0 #ff00c1, -2px 2px 0 #00fff9; }
+  75% { text-shadow: -2px 2px 0 #ff00c1, 2px -2px 0 #00fff9; }
+  100% { text-shadow: 2px 0 0 #ff00c1, -2px 0 0 #00fff9; }
+}
+
+.glitch-hover:hover {
+  animation: text-glitch 0.3s infinite;
+}
+
+/* Level fade effect */
+@keyframes fadeOut {
+  0% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.animate-fade-out {
+  animation: fadeOut 2s forwards;
+}
+
+/* Bubble pulse animation */
+@keyframes bubbleFloat {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+.bubble-float {
+  animation: bubbleFloat 2s ease-in-out infinite;
+}
+
