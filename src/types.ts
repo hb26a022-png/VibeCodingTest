@@ -1,6 +1,7 @@
 export enum GameState {
   TITLE = "TITLE",
   PLAYING = "PLAYING",
+  PAUSED = "PAUSED",
   GAMEOVER = "GAMEOVER",
   CLEAR = "CLEAR",
 }
@@ -40,6 +41,7 @@ export interface Player {
   bugs: number; // Coin equivalent
   hasJumpedOnWater?: boolean;
   isOnWater?: boolean;
+  waterTimer?: number;
 }
 
 export enum EnemyType {

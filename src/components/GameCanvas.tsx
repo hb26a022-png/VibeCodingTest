@@ -17,6 +17,7 @@ import { generateLevel } from "../utils/levelBuilder";
 import { sound } from "../utils/sound";
 import { 
   Play, 
+  Pause,
   RotateCcw, 
   Volume2, 
   VolumeX, 
@@ -169,6 +170,16 @@ export default function GameCanvas({
     sound.setMute(nextMute);
   };
 
+  const handlePauseToggle = () => {
+    if (gameState === GameState.PLAYING) {
+      setGameState(GameState.PAUSED);
+      sound.playBump();
+    } else if (gameState === GameState.PAUSED) {
+      setGameState(GameState.PLAYING);
+      sound.playPowerUp();
+    }
+  };
+
   // Setup Keyboard listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -180,6 +191,12 @@ export default function GameCanvas({
       }
 
       keysRef.current[k] = true;
+
+      // Handle Interactive Pause trigger via P or Escape
+      if (k === "p" || e.key === "Escape") {
+        e.preventDefault();
+        handlePauseToggle();
+      }
 
       // Handle Instant Action on pressing F or X (Action/Shoot key)
       if (k === "f" || k === "x") {
@@ -500,6 +517,27 @@ export default function GameCanvas({
 
     player.y += player.vy;
     resolveVerticalCollisions(oldY);
+
+    // Water Walk Ticking & Drowning Logic (2-second limit)
+    if (player.isOnWater) {
+      player.waterTimer = (player.waterTimer || 0) + 1;
+      if (player.waterTimer >= 120) { // 2 seconds at 60 fps
+        player.lives--;
+        player.size = PlayerSize.NORMAL;
+        player.waterTimer = 0;
+        player.isOnWater = false;
+        player.hasJumpedOnWater = false;
+        onUpdateHUD(player.score, player.bugs, player.lives, player.size);
+        sound.playHurt();
+        triggerDeath();
+        return;
+      }
+    } else {
+      // If the player is standing stably on actual solid land, reset the water walking stamina
+      if (player.isGrounded) {
+        player.waterTimer = 0;
+      }
+    }
 
     // Keep within world bounds
     if (player.x < 0) {
@@ -993,11 +1031,12 @@ export default function GameCanvas({
       if (checkAABB(player, b)) {
         if (b.type === BlockType.SPIKES) {
           if (player.invulnerableFrames <= 0) {
-            player.lives--;
-            player.size = PlayerSize.NORMAL;
-            onUpdateHUD(player.score, player.bugs, player.lives, player.size);
-            sound.playHurt();
-            triggerDeath();
+            shrinkPlayer();
+            // Reset position to pre-collision safe X coordinate to prevent burying/clipping
+            player.x = oldX;
+            // Knockback away from spike horizontally and bounce a little
+            player.vx = player.x < b.x ? -5 : 5;
+            player.vy = -4;
           }
           return;
         }
@@ -1023,27 +1062,18 @@ export default function GameCanvas({
         // Special: Spikes Hazard
         if (b.type === BlockType.SPIKES) {
           if (player.invulnerableFrames <= 0) {
-            player.lives--;
-            player.size = PlayerSize.NORMAL; // 一回死んだらカエルの状態を初期状態に戻す
-            onUpdateHUD(player.score, player.bugs, player.lives, player.size);
-            sound.playHurt();
-            triggerDeath();
+            shrinkPlayer();
+            // Reset position to pre-collision safe Y coordinate to prevent burying/clipping
+            player.y = oldY;
+            // Bounce up immediately so they don't immediately keep touching spikes
+            player.vy = -7;
+            player.isGrounded = false;
           }
           return;
         }
 
         // Special: Water Hazard
         if (b.type === BlockType.WATER) {
-          if (player.hasJumpedOnWater) {
-            // Melt/Drown!
-            player.lives--;
-            player.size = PlayerSize.NORMAL; // 一回死んだらカエルの状態を初期状態に戻す
-            onUpdateHUD(player.score, player.bugs, player.lives, player.size);
-            sound.playHurt();
-            triggerDeath();
-            return;
-          }
-
           if (player.vy >= 0) {
             // Standing on top of water
             player.y = b.y - player.height;
@@ -1789,9 +1819,8 @@ export default function GameCanvas({
       ctx.arc(8, -visualHeight/2.2, 3, 0, Math.PI*2);
       ctx.fill();
 
-      // Draw Crown / Water bubble headwear if power size
+      // Draw small flame ornament if in FIRE state as an power-up indicator
       if (player.size === PlayerSize.FIRE) {
-        // Red flaming halo
         ctx.fillStyle = "#f97316";
         ctx.beginPath();
         ctx.arc(0, eyeY - 6, 4, 0, Math.PI*2);
@@ -1799,6 +1828,47 @@ export default function GameCanvas({
       }
 
       ctx.restore();
+
+      // Draw water walk meter if the player has been on water
+      if (player.waterTimer && player.waterTimer > 0) {
+        const total = 120; // 2 seconds at 60fps
+        const rem = Math.max(0, total - player.waterTimer);
+        const ratio = rem / total;
+
+        const meterW = 34;
+        const meterH = 6;
+        const mx = pX + player.width / 2 - meterW / 2;
+        const my = pY - 16;
+
+        ctx.save();
+        // Background black bar with outline style
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(mx, my, meterW, meterH);
+
+        // Color transition depending on urgency
+        let barColor = "#3d82f6"; // robust water blue
+        if (ratio < 0.35) {
+          barColor = "#ef4444"; // alert bright red
+        } else if (ratio < 0.65) {
+          barColor = "#eab308"; // warning yellow
+        }
+
+        ctx.fillStyle = barColor;
+        ctx.fillRect(mx + 1, my + 1, Math.max(0, (meterW - 2) * ratio), meterH - 2);
+
+        // Small neon label text
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 8px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        const secondsLeft = (rem / 60).toFixed(1);
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(`${secondsLeft}s`, pX + player.width / 2, my - 2);
+        ctx.fillText(`${secondsLeft}s`, pX + player.width / 2, my - 2);
+
+        ctx.restore();
+      }
 
       // 8. TONGUE EXTENSION RENDER (👅 MELEE WHIP)
       if (player.tongueState !== "idle") {
@@ -1885,14 +1955,28 @@ export default function GameCanvas({
           <span>⬆️ [スペース / W]ジャンプ</span>
           <span>👅 [F / X]ベロ/ショット</span>
         </div>
-        <button 
-          id="sound_toggle_btn"
-          onClick={handleMuteToggle}
-          className="flex items-center gap-1.5 focus:outline-none bg-[#FF2E93] hover:bg-[#ff5ca6] text-white font-pixel px-2.5 py-1 rounded-xl transition border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer"
-        >
-          {isMuted ? <VolumeX className="w-4 h-4 text-rose-300" /> : <Volume2 className="w-4 h-4 text-yellow-300" />}
-          <span>{isMuted ? "ON" : "OFF"}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* PAUSE Button */}
+          {(gameState === GameState.PLAYING || gameState === GameState.PAUSED) && (
+            <button 
+              id="pause_toggle_btn"
+              onClick={handlePauseToggle}
+              className="flex items-center gap-1 focus:outline-none bg-yellow-400 hover:bg-yellow-300 text-black font-pixel px-2.5 py-1 rounded-xl transition border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer"
+            >
+              {gameState === GameState.PAUSED ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5" />}
+              <span>{gameState === GameState.PAUSED ? "再開" : "ポーズ"}</span>
+            </button>
+          )}
+
+          <button 
+            id="sound_toggle_btn"
+            onClick={handleMuteToggle}
+            className="flex items-center gap-1.5 focus:outline-none bg-[#FF2E93] hover:bg-[#ff5ca6] text-white font-pixel px-2.5 py-1 rounded-xl transition border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer"
+          >
+            {isMuted ? <VolumeX className="w-4 h-4 text-rose-300" /> : <Volume2 className="w-4 h-4 text-yellow-300" />}
+            <span>{isMuted ? "ON" : "OFF"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Main retro gaming canvas frame */}
@@ -1914,6 +1998,43 @@ export default function GameCanvas({
             <p className="text-xs font-pixel text-white bg-black/50 px-3 py-1 border-2 border-white rounded-lg">
               {levelIndex === 1 ? "スイレンの沼地" : levelIndex === 2 ? "棘バラの魔境" : "ヘビの魔宮砦"}
             </p>
+          </div>
+        )}
+
+        {/* Dynamic Pause Overlay */}
+        {gameState === GameState.PAUSED && (
+          <div className="absolute inset-0 flex flex-col justify-center items-center bg-black/75 z-20 animate-fade-in backdrop-blur-xs">
+            <div className="bg-[#1e1b4b] border-4 border-yellow-400 p-6 rounded-2xl flex flex-col items-center max-w-[280px] shadow-[6px_6px_0_0_#000] text-center">
+              <h3 className="text-3xl text-yellow-300 font-pixel mb-3 tracking-wider animate-pulse filter drop-shadow-[2px_2px_0_#000] drop-shadow-black">
+                PAUSE
+              </h3>
+              
+              <div className="text-[10px] text-white/90 font-sans font-bold bg-black/40 px-3 py-1.5 border border-dashed border-white/20 rounded-lg mb-5 leading-normal">
+                [P] キー または [Esc] キー で<br />
+                いつでも一時停止/再開可能
+              </div>
+
+              <div className="flex flex-col gap-3 w-full">
+                <button
+                  id="resume_game_btn"
+                  onClick={handlePauseToggle}
+                  className="py-2 px-4 bg-yellow-400 hover:bg-yellow-300 text-black border-2 border-black rounded-xl font-pixel font-bold text-[10px] tracking-wide transition shadow-[3px_3px_0_#000] active:scale-95 cursor-pointer flex justify-center items-center gap-1"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  ゲームを再開
+                </button>
+                <button
+                  id="abandon_to_title_btn"
+                  onClick={() => {
+                    sound.stopBGM();
+                    setGameState(GameState.TITLE);
+                  }}
+                  className="py-2 px-4 bg-[#FF2E93] hover:bg-[#ff5ca6] text-white border-2 border-black rounded-xl font-pixel font-bold text-[10px] tracking-wide transition shadow-[3px_3px_0_#000] active:scale-95 cursor-pointer"
+                >
+                  タイトルに戻る
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
